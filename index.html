@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống Thi trắc nghiệm Trực tuyến</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg-body: #f8fafc;
+            --text-main: #1e293b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg-body); color: var(--text-main); line-height: 1.6; padding: 20px; }
+        
+        /* ĐỀ THI GIỮ NGUYÊN ĐỘ RỘNG 800PX VÀ CĂN GIỮA HOÀN HẢO */
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); position: relative; }
+        
+        /* === CSS CHO LOGO TRANG CHỦ === */
+        .logo-welcome {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .logo-welcome img {
+            max-width: 130px;
+            height: auto;
+        }
+
+        /* === CSS WATERMARK CHO MÀN HÌNH LÀM BÀI === */
+        #screenQuiz::before {
+            content: "";
+            position: fixed;             /* Giữ cố định giữa màn hình khi cuộn đề */
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 500px;                /* Có thể tăng lên 500px để phủ rộng hơn */
+            height: 500px;
+            background-image: url('logo.png'); 
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            opacity: 0.09;               /* Tăng nhẹ lên 0.09 để nhìn rõ nét đè lên chữ */
+            pointer-events: none;        /* Cực kỳ quan trọng: Học sinh vẫn click chọn đáp án xuyên qua ảnh được */
+            z-index: 9999;               /* THAY ĐỔI: Bật lên 9999 để nổi lên trên cùng, đè thẳng lên chữ */
+        }
+
+        /* Đảm bảo nội dung câu hỏi nổi lên trên watermark */
+        .question-box { 
+            position: relative; 
+            z-index: 2; 
+            background: rgba(255, 255, 255, 0.9); /* Nền trắng nhẹ để dễ đọc chữ */
+            padding: 20px; margin-bottom: 25px; border: 1px solid #e2e8f0; border-radius: 8px; 
+        }
+
+        /* Các định dạng chung khác */
+        .screen { display: none; }
+        .screen.active { display: block; }
+        h1, h2 { text-align: center; color: #1e3a8a; margin-bottom: 20px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 6px; font-weight: bold; }
+        input[type="text"] { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 16px; }
+        
+        /* Định dạng các nút bấm chung */
+        button { width: 100%; padding: 12px; background: var(--primary); color: #fff; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background: var(--primary-hover); }
+        
+        #timer { position: sticky; top: 0; background: #fee2e2; color: #991b1b; font-weight: bold; padding: 10px; text-align: center; border-radius: 6px; margin-bottom: 20px; border: 1px solid #fca5a5; z-index: 10; }
+        
+        /* Thêm padding bên phải tiêu đề câu hỏi để không đè lên nút cắm cờ */
+        .q-title { font-weight: bold; margin-bottom: 12px; color: #1e3a8a; padding-right: 100px; }
+        .options-list { list-style: none; }
+        .options-list li { margin-bottom: 8px; }
+        .tf-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .tf-table th, .tf-table td { border: 1px solid #cbd5e1; padding: 8px; text-align: center; }
+        .tf-table td:first-child { text-align: left; }
+
+        /* === CSS CHO VÙNG CẮM CỜ Ở MỖI CÂU HỎI === */
+        .flag-zone { position: absolute; top: 15px; right: 15px; z-index: 10; }
+        button.btn-flag { width: auto; padding: 4px 8px; background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; font-weight: normal; cursor: pointer; transition: all 0.2s; }
+        button.btn-flag:hover { background: #e2e8f0; }
+        button.btn-flag.active { background: #ffedd5; color: #ea580c; border-color: #f97316; font-weight: bold; }
+
+        /* === CSS CHO BẢNG TIẾN ĐỘ ĐẨY RA HẲN BÊN NGOÀI === */
+        .tracker-panel {
+            position: fixed;
+            top: 120px;
+            left: calc(50% + 420px); /* Đẩy bảng ra rìa phải của container 800px */
+            width: 180px;
+            background: #fff;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border: 1px solid #cbd5e1;
+            z-index: 100;
+        }
+        .tracker-title { font-size: 13px; font-weight: bold; text-align: center; margin-bottom: 12px; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
+        .tracker-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        
+        .tracker-btn { position: relative; background: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; padding: 6px 0; text-align: center; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; transition: all 0.2s; user-select: none; }
+        .tracker-btn:hover { background: #cbd5e1; }
+        .tracker-btn.answered { background: #16a34a; color: #fff; border-color: #15803d; }
+        
+        /* Trạng thái khi ô tiến độ được cắm cờ */
+        .tracker-btn.flagged { border: 2px solid #ea580c !important; background: #ffedd5; color: #ea580c; }
+        .tracker-btn.flagged.answered { background: #16a34a; color: #fff; } /* Vừa làm vừa cắm cờ */
+        .tracker-btn.flagged::after { content: "🚩"; position: absolute; top: -9px; right: -4px; font-size: 9px; }
+
+        /* Tự động tối ưu vị trí khi thu nhỏ màn hình máy tính để không đè vào đề */
+        @media (max-width: 1220px) {
+            .tracker-panel { left: auto; right: 15px; width: 150px; }
+            .tracker-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        /* Khi xem trên điện thoại/máy tính bảng, tự động đưa vào trong đề và xếp hàng ngang gọn gàng */
+        @media (max-width: 1024px) {
+            .tracker-panel { position: relative; left: auto; right: auto; top: auto; width: 100%; margin-bottom: 20px; box-shadow: none; }
+            .tracker-grid { grid-template-columns: repeat(10, 1fr); }
+        }
+        @media (max-width: 600px) {
+            .tracker-grid { grid-template-columns: repeat(5, 1fr); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <div id="screenWelcome" class="screen active">
+        <div class="logo-welcome">
+            <img src="logo.png" alt="Logo">
+        </div>
+        <h1>HỆ THỐNG THI TRỰC TUYẾN</h1>
+        <div class="form-group">
+            <label for="studentName">Họ và tên học sinh:</label>
+            <input type="text" id="studentName" placeholder="Nhập đầy đủ họ và tên...">
+        </div>
+        <button onclick="batDauLamBai()"> BẮT ĐẦU LÀM BÀI</button>
+    </div>
+
+    <div id="screenQuiz" class="screen">
+        <div id="timer">Thời gian còn lại: 90:00</div>
+        <h2 id="quizTitle">Đang tải đề thi...</h2>
+        
+        <div class="tracker-panel">
+            <div class="tracker-title">📊 TIẾN ĐỘ BÀI LÀM</div>
+            <div id="trackerGrid" class="tracker-grid"></div>
+        </div>
+
+        <div id="quizContainer"></div>
+        <button onclick="nopBaiChinhThuc(false)" style="background:#dc2626; margin-top:20px;">NỘP BÀI</button>
+    </div>
+
+    <div id="screenResult" class="screen">
+        <h1>KẾT QUẢ BÀI LÀM</h1>
+        <div id="resultBox" style="background:#f1f5f9; padding:20px; border-radius:8px; margin-bottom:20px; line-height:2;"></div>
+    </div>
+
+</div>
+
+<script src="de1.js"></script>
+<script>
+    // === CẤU HÌNH ĐƯỜNG DẪN GOOGLE SHEET CỦA THẦY CÔ TẠI ĐÂY ===
+    const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwxekPQuhUAE3_KIukqjPuKXqFJpM4F7h2z1rWSArJbiadIFoJXiprNTa1VDm1v0cM/exec"; 
+    const THOI_GIAN_THI_PHUT = 90;
+
+    let sinhVien_Ten = "";
+    let deThi_Ten = "Đề thi thử toán lớp 11 SP CLASS";
+    let boDemThoiGian;
+    let tongThoiGianGiay = THOI_GIAN_THI_PHUT * 60;
+    
+    // Biến lưu trạng thái chống gian lận/rời màn hình
+    let soLanChuyenTab = 0;
+    let dangTrongTrangThi = false; 
+
+    function chuyenManHinh(idAn, idHien) {
+        document.getElementById(idAn).classList.remove('active');
+        document.getElementById(idHien).classList.add('active');
+    }
+
+    function batDauLamBai() {
+        const inputName = document.getElementById('studentName').value.trim();
+        if(!inputName) { alert("Vui lòng điền họ và tên trước khi làm bài!"); return; }
+        sinhVien_Ten = inputName;
+        
+        chuyenManHinh('screenWelcome', 'screenQuiz');
+        khoiTaoDeThi();
+        khoiTaoBangTheoDoi(); // Tạo bảng số câu theo dõi
+        
+        dangTrongTrangThi = true; // Kích hoạt bộ kiểm tra chuyển tab
+
+        boDemThoiGian = setInterval(() => {
+            if(tongThoiGianGiay <= 0) { nopBaiChinhThuc(true); }
+            else {
+                tongThoiGianGiay--;
+                let p = Math.floor(tongThoiGianGiay / 60);
+                let s = tongThoiGianGiay % 60;
+                document.getElementById('timer').innerText = `Thời gian còn lại: ${p < 10 ? '0'+p : p}:${s < 10 ? '0'+s : s}`;
+            }
+        }, 1000);
+    }
+
+    function khoiTaoDeThi() {
+        document.getElementById('quizTitle').innerText = deThi_Ten;
+        const container = document.getElementById('quizContainer');
+        container.innerHTML = "";
+
+        if(typeof DANH_SACH_CAU_HOI === 'undefined') {
+            container.innerHTML = "<p style='color:red;'>Lỗi: Không tìm thấy file dữ liệu de1.js!</p>";
+            return;
+        }
+
+        DANH_SACH_CAU_HOI.forEach((c) => {
+            let htmlCauHoi = `<div class="question-box" id="${c.id}" data-type="${c.type}" data-correct="${c.correct}">`;
+            
+            // Thêm nút cắm cờ vào góc phải mỗi câu hỏi
+            htmlCauHoi += `<div class="flag-zone"><button type="button" class="btn-flag" onclick="toggleFlag('${c.id}')">🚩</button></div>`;
+
+            if(c.type === 'single') {
+                htmlCauHoi += `<div class="q-title">${c.title}</div><ul class="options-list">`;
+                c.options.forEach((opt) => {
+                    let kyTu = opt.trim().charAt(0);
+                    htmlCauHoi += `<li><label><input type="radio" name="q_${c.id}" value="${kyTu}"> ${opt}</label></li>`;
+                });
+                htmlCauHoi += `</ul>`;
+            }
+            else if(c.type === 'tf') {
+                htmlCauHoi += `<div class="q-title">${c.title}</div>`;
+                htmlCauHoi += `<table class="tf-table">
+                    <tr><th>Nội dung ý hỏi</th><th>Đúng</th><th>Sai</th></tr>`;
+                c.options.forEach((opt, idx) => {
+                    htmlCauHoi += `<tr>
+                        <td>${opt}</td>
+                        <td><input type="radio" name="q_${c.id}_${idx+1}" value="Đ"></td>
+                        <td><input type="radio" name="q_${c.id}_${idx+1}" value="S"></td>
+                    </tr>`;
+                });
+                htmlCauHoi += `</table>`;
+            }
+            else if(c.type === 'short') {
+                htmlCauHoi += `<div class="q-title">${c.title}</div>`;
+                htmlCauHoi += `<input type="text" placeholder="Gõ câu trả lời ngắn của bạn vào đây..." style="margin-top:5px;">`;
+            }
+
+            htmlCauHoi += `</div>`;
+            container.insertAdjacentHTML('beforeend', htmlCauHoi);
+        });
+    }
+
+    function nopBaiChinhThuc(laHetGio) {
+        clearInterval(boDemThoiGian);
+        dangTrongTrangThi = false; // Ngừng theo dõi chuyển tab sau khi nộp bài
+        
+        if (laHetGio) { alert("Đã hết thời gian làm bài! Hệ thống tự động khóa đề và nộp bài."); }
+
+        // Tính toán thời gian làm bài thực tế
+        let tongThoiGianChoPhepGiay = THOI_GIAN_THI_PHUT * 60;
+        let giayDaLam = tongThoiGianChoPhepGiay - tongThoiGianGiay;
+        let pLam = Math.floor(giayDaLam / 60);
+        let sLam = giayDaLam % 60;
+        let chuoiThoiGianLamBai = `${pLam} phút ${sLam} giây`;
+
+        let tongDiem = 0;
+        let chiTietPhanI = 0, chiTietPhanII = 0, chiTietPhanIII = 0;
+        let chuoiDiemChiTiet = ""; 
+        let chuoiBaiLam = "";      
+        
+        let htmlReviewHocSinh = `<div id="reviewGiaoDien" style="display:none; margin-top:20px; text-align:left; background:#fff; padding:15px; border-radius:8px; border:1px solid #e2e8f0;">
+                                    <h3 style="color:#1e3a8a; margin-bottom:15px; border-bottom:2px solid #cbd5e1; padding-bottom:5px;">Chi tiết bài làm:</h3>`;
+
+        const allQuestions = document.querySelectorAll('.question-box');
+        
+        allQuestions.forEach((q) => {
+            const type = q.dataset.type;
+            const tieuDeCauHoi = q.querySelector('.q-title')?.innerText || `Câu ${q.id}`;
+
+            if (type === 'single') {
+                const correct = q.dataset.correct;
+                const selected = q.querySelector('input[type="radio"]:checked')?.value || "Bỏ trống";
+                let diemCau = 0;
+                let laDung = (selected === correct);
+                if (laDung) { tongDiem += 0.25; chiTietPhanI += 0.25; diemCau = 0.25; }
+                chuoiDiemChiTiet += `Câu ${q.id}: ${diemCau}đ\n`;
+                chuoiBaiLam += `Câu ${q.id}: Chọn [${selected}] (Đáp án: ${correct})\n`;
+
+                htmlReviewHocSinh += `
+                    <div style="padding:10px; margin-bottom:10px; border-left:4px solid ${laDung ? '#22c55e' : '#ef4444'}; background:#f8fafc;">
+                        <b>${tieuDeCauHoi}</b><br>
+                        • Bạn chọn: <span style="color:${laDung ? '#16a34a' : '#dc2626'}; font-weight:bold;">${selected}</span> | Đáp án đúng: <span style="color:#16a34a; font-weight:bold;">${correct}</span> (${diemCau}đ)
+                    </div>`;
+            }
+            else if (type === 'tf') {
+                const correctArr = q.dataset.correct.split(','); 
+                let soY_Dung = 0;
+                let luaChonCuaHocSinh = [];
+                let chiTietYHtml = "";
+                
+                for(let i = 1; i <= 4; i++) {
+                    const ans = q.querySelector(`input[name="q_${q.id}_${i}"]:checked`)?.value || "Trống";
+                    luaChonCuaHocSinh.push(ans);
+                    let yDung = (ans === correctArr[i-1]);
+                    if (yDung) { soY_Dung++; }
+                    chiTietYHtml += `&nbsp;&nbsp;&nbsp;&nbsp;- Ý ${i}): Bạn chọn [${ans}] - Đáp án: [${correctArr[i-1]}] -> ${yDung ? '<span style="color:#16a34a;">Đúng</span>' : '<span style="color:#dc2626;">Sai</span>'}<br>`;
+                }
+
+                let diemCauNay = 0;
+                if (soY_Dung === 4) diemCauNay = 1.0;
+                else if (soY_Dung === 3) diemCauNay = 0.5;
+                else if (soY_Dung === 2) diemCauNay = 0.25;
+                else if (soY_Dung === 1) diemCauNay = 0.1;
+
+                tongDiem += diemCauNay; chiTietPhanII += diemCauNay;
+                chuoiDiemChiTiet += `Câu ${q.id}: ${diemCauNay}đ (Đúng ${soY_Dung}/4 ý)\n`;
+                chuoiBaiLam += `Câu ${q.id}: Chọn [${luaChonCuaHocSinh.join(',')}] (Đáp án: ${correctArr.join(',')})\n`;
+
+                htmlReviewHocSinh += `
+                    <div style="padding:10px; margin-bottom:10px; border-left:4px solid ${soY_Dung === 4 ? '#22c55e' : '#ef4444'}; background:#f8fafc;">
+                        <b>${tieuDeCauHoi}</b> (Đạt được: ${diemCauNay}đ)<br>
+                        ${chiTietYHtml}
+                    </div>`;
+            }
+            else if (type === 'short') {
+                const correctText = q.dataset.correct.trim();
+                const inputEl = q.querySelector('input[type="text"]');
+                const studentText = inputEl ? inputEl.value.trim() : "";
+                let diemCau = 0;
+                let laDung = (studentText.toLowerCase() === correctText.toLowerCase());
+                if (laDung) { tongDiem += 0.5; chiTietPhanIII += 0.5; diemCau = 0.5; }
+                chuoiDiemChiTiet += `Câu ${q.id}: ${diemCau}đ\n`;
+                chuoiBaiLam += `Câu ${q.id}: Gõ "${studentText || 'Trống'}" (Đáp án: ${correctText})\n`;
+
+                htmlReviewHocSinh += `
+                    <div style="padding:10px; margin-bottom:10px; border-left:4px solid ${laDung ? '#22c55e' : '#ef4444'}; background:#f8fafc;">
+                        <b>${tieuDeCauHoi}</b><br>
+                        • Câu trả lời của bạn: <span style="color:${laDung ? '#16a34a' : '#dc2626'}; font-weight:bold;">${studentText || 'Bỏ trống'}</span> | Đáp án đúng: <span style="color:#16a34a; font-weight:bold;">${correctText}</span> (${diemCau}đ)
+                    </div>`;
+            }
+        });
+
+        tongDiem = parseFloat(tongDiem.toFixed(2));
+        htmlReviewHocSinh += `</div>`;
+
+        chuyenManHinh('screenQuiz', 'screenResult');
+        
+        // Hiển thị kết quả công khai số lần chuyển tab ngoài màn hình kết quả
+        document.getElementById('resultBox').innerHTML = `
+            • <b>Họ và tên:</b> ${sinhVien_Ten}<br>
+            • <b>Đề thi:</b> ${deThi_Ten}<br>
+            • <b>Thời gian làm bài:</b> <span style="color:#2563eb; font-weight:bold;">${chuoiThoiGianLamBai}</span><br>
+            • <b>Số lần chuyển tab / rời màn hình:</b> <span style="color:${soLanChuyenTab > 0 ? '#dc2626' : '#16a34a'}; font-weight:bold;">${soLanChuyenTab} lần</span><br>
+            • <b>Tổng điểm đạt được:</b> <span style="font-size:26px; color:#dc2626; font-weight:bold;">${tongDiem} / 10 Điểm</span><br>
+            <button onclick="document.getElementById('reviewGiaoDien').style.display = document.getElementById('reviewGiaoDien').style.display === 'none' ? 'block' : 'none'" 
+                    style="margin-top:15px; padding:10px 15px; background:#2563eb; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; width:100%;">
+                Xem / Ẩn chi tiết bài làm của bạn
+            </button>
+            ${htmlReviewHocSinh}
+        `;
+
+        // Gửi báo cáo kèm số lần chuyển tab về Google Sheet
+        guiBaoCaoVeGoogleSheet(
+            sinhVien_Ten, 
+            deThi_Ten, 
+            tongDiem, 
+            `P1: ${chiTietPhanI.toFixed(2)}, P2: ${chiTietPhanII.toFixed(2)}, P3: ${chiTietPhanIII.toFixed(2)}`,
+            chuoiDiemChiTiet,
+            chuoiBaiLam,
+            chuoiThoiGianLamBai,
+            soLanChuyenTab
+        );
+    }
+
+    function guiBaoCaoVeGoogleSheet(ten, de, diem, chiTietPhan, diemTungCau, baiLam, thoiGianLam, chuyenTab) {
+        if(!GOOGLE_SHEET_WEB_APP_URL || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_GOOGLE_APP_SCRIPT_URL_HERE")) return;
+        
+        const data = { 
+            name: ten, 
+            exam: de, 
+            score: diem, 
+            sections: chiTietPhan, 
+            detailedScores: diemTungCau, 
+            studentAnswers: baiLam, 
+            duration: thoiGianLam, 
+            tabSwitches: chuyenTab, // Gửi cột số lần chuyển tab/gian lận lên Google Sheet
+            time: new Date().toLocaleString("vi-VN") 
+        };
+        
+        fetch(GOOGLE_SHEET_WEB_APP_URL, { 
+            method: "POST", 
+            mode: "no-cors", 
+            headers: { "Content-Type": "application/json" }, 
+            body: JSON.stringify(data) 
+        }).catch(err => console.log(err));
+    }
+
+    // === CÁC HÀM XỬ LÝ LOGIC CHO BẢNG THEO DÕI TIẾN ĐỘ ===
+    function khoiTaoBangTheoDoi() {
+        const grid = document.getElementById('trackerGrid');
+        if (!grid) return;
+        grid.innerHTML = "";
+        
+        if (typeof DANH_SACH_CAU_HOI !== 'undefined') {
+            DANH_SACH_CAU_HOI.forEach(c => {
+                let btn = document.createElement('div');
+                btn.id = `track_q_${c.id}`;
+                btn.className = "tracker-btn";
+                btn.innerText = `${c.id}`; // THAY ĐỔI: Chỉ hiện số nguyên bản (Ví dụ từ C14 thành 14)
+                
+                // Click vào số ô -> Tự cuộn mượt tới vị trí câu hỏi đó và nháy viền xanh định vị
+                btn.onclick = function() {
+                    const el = document.getElementById(c.id);
+                    if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        el.style.outline = "2px solid var(--primary)";
+                        setTimeout(() => el.style.outline = "none", 1200);
+                    }
+                };
+                grid.appendChild(btn);
+            });
+        }
+    }
+
+    function kiemTraVaCapNhatTrangThai(idCauHoi) {
+        const qBox = document.getElementById(idCauHoi);
+        const btn = document.getElementById(`track_q_${idCauHoi}`);
+        if (!qBox || !btn) return;
+        
+        const type = qBox.dataset.type;
+        let daLam = false;
+        
+        if (type === 'single') {
+            daLam = qBox.querySelector('input[type="radio"]:checked') !== null;
+        } else if (type === 'tf') {
+            daLam = qBox.querySelector('input[type="radio"]:checked') !== null;
+        } else if (type === 'short') {
+            const inputEl = qBox.querySelector('input[type="text"]');
+            daLam = inputEl && inputEl.value.trim() !== "";
+        }
+        
+        if (daLam) {
+            btn.classList.add('answered');
+        } else {
+            btn.classList.remove('answered');
+        }
+    }
+
+    // Tính năng đặt cờ/cắm cờ câu hỏi để xem lại sau
+    function toggleFlag(idCauHoi) {
+        const qBox = document.getElementById(idCauHoi);
+        const btnFlag = qBox.querySelector('.btn-flag');
+        const btnTrack = document.getElementById(`track_q_${idCauHoi}`);
+        
+        if (btnFlag && btnTrack) {
+            btnFlag.classList.toggle('active');
+            btnTrack.classList.toggle('flagged');
+            if (btnFlag.classList.contains('active')) {
+                btnFlag.innerHTML = "🚩";
+            } else {
+                btnFlag.innerHTML = "🚩";
+            }
+        }
+    }
+
+    // Lắng nghe hành động chọn đáp án/nhập liệu để cập nhật màu xanh ngay lập tức lên ô tiến độ
+    document.addEventListener('change', function(e) {
+        const qBox = e.target.closest('.question-box');
+        if (qBox) kiemTraVaCapNhatTrangThai(qBox.id);
+    });
+    document.addEventListener('input', function(e) {
+        const qBox = e.target.closest('.question-box');
+        if (qBox) kiemTraVaCapNhatTrangThai(qBox.id);
+    });
+
+    // === LOGIC PHÁT HIỆN CHUYỂN TAB / RỜI MÀN HÌNH CHỐNG GIAN LẬN ===
+    document.addEventListener('visibilitychange', function() {
+        if (dangTrongTrangThi && document.visibilityState === 'hidden') {
+            soLanChuyenTab++;
+            alert(`⚠️ CẢNH BÁO: Bạn vừa chuyển tab hoặc rời khỏi màn hình thi!\n Vui lòng tập trung làm bài!`);
+        }
+    });
+</script>
+</body>
+</html>
